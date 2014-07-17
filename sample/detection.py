@@ -58,14 +58,14 @@ if __name__ == '__main__':
 
     plasm = ecto.Plasm()
 
-    json_db_params = obj_to_cpp_json_str({'type': 'CouchDB', 'root': 'http://bwl.willowgarage.com:5984',
+    json_db_params = obj_to_cpp_json_str({'type': 'CouchDB', 'root': 'http://localhost:5984',
                                         'collection': 'object_recognition'})
 
     #setup the input source, grayscale conversion
     from ecto_openni import VGA_RES, FPS_30
     source = create_source('image_pipeline','OpenNISource',image_mode=VGA_RES,image_fps=FPS_30)
 
-    object_ids = obj_to_cpp_json_str(['whoolite', 'tilex'])
+    object_ids = obj_to_cpp_json_str(['7fd7f29dda35732f052a146ae90009a2'])
     detector = Detector(json_object_ids=object_ids, json_db=json_db_params, threshold=90, visualize=True)
 
     #connect up the pose_est

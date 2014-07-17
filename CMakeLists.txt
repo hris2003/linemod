@@ -3,8 +3,8 @@ project(object_recognition_linemod)
 
 find_package(catkin)
 
-find_package(catkin REQUIRED object_recognition_core object_recognition_renderer)
-catkin_package(CATKIN_DEPENDS ecto object_recognition_core object_recognition_renderer
+find_package(catkin REQUIRED object_recognition_core object_recognition_renderer object_recognition_tabletop opencv_candidate)
+catkin_package(CATKIN_DEPENDS ecto object_recognition_core object_recognition_renderer object_recognition_tabletop opencv_candidate
                DEPENDS OpenCV
 )
 
