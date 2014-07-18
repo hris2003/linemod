@@ -398,6 +398,8 @@ void icpCloudToCloud(cv::Mat_<cv::Vec3f> src, cv::Mat_<cv::Vec3f> dest,
 	std::vector<cv::Vec3f> s_neighbors, d_neighbors;
 	cv::Mat_<cv::Vec3f> src_in(src);
 	//transformPoints(src, src, R, cv::Vec3f(0,0,0));
+	cv::Mat R0 =
+					(cv::Mat_<float>(3, 3) << 1, 0, 0, 0, 1, 0, 0, 0, 1);
 	double min_dist = getDistance2Clouds(src_in, dest);
 	/*
 	 std::cout << "begin distance: " << min_dist << "\n"
@@ -595,99 +597,22 @@ struct Detector: public object_recognition_core::db::bases::ModelReaderBase {
 		cv::depthTo3d(*depth_, K, m_3DImg);
 		//==============================================================
 		//get the finest icp-ed matches only
-		double best_to_fit = 0.0;//at first anything is a fit
-		int biggest_size = 0;
-		double threshold_ratio = 0.6;
-		BOOST_FOREACH(const cv::linemod::Match & match, matches) {
-			const std::vector<cv::linemod::Template>& templates =
-					detector_->getTemplates(match.class_id, match.template_id);
 
-			cv::Mat mat = cv::Mat::eye(3, 3, CV_32F);
-			float* data = reinterpret_cast<float*>(mat.data);//cast mat.data to float*
-
-			cv::Matx33f R(data), R1(data), R0(data);
-			cv::Vec3f T(0, 0, 0), T0(0, 0, 0);
-
-			{
-				cv::Mat R_in =
-						Rs_.at(match.class_id)[match.template_id].clone();
-				cv::Mat T_in =
-						Ts_.at(match.class_id)[match.template_id].clone();
-				R_in.convertTo(R, CV_32F);
-				R_in.convertTo(R1, CV_32F);
-				T_in.convertTo(T, CV_32F);
-			}
-			R = R.t();
-
-			//======================================
-			//Move the pose_result to the match position
-			cv::linemod::Feature f = templates[1].features[0];
-
-			//Get the good position by filtering the cloud in the zone of the returned match
-			cv::Rect_<int> rect(0, 0, -1, -1);
-			getBoundingbox(templates, m_3DImg, cv::Point(match.x, match.y),
-					rect);
-			image_ref_ = images_ref_.at(match.template_id);
-
-			rect.width = image_ref_.cols;
-			rect.height = image_ref_.rows;
-
-			depth_real = m_3DImg(rect);
-
-			cv::Mat_<cv::Vec3f> crop_out;
-			//image_out.convertTo(image_out, CV_32F);
-			cv::depthTo3d(image_ref_, K, crop_out);
-
-			T = T0 + crop_out(rect.height / 2, rect.width / 2);
-
-			R = R0;
-			icpCloudToCloud(crop_out, depth_real, R, T);
-
-			float threshold = 0.02;
-			float good_to_fit = getExpectedInliersRatio(crop_out, depth_real,
-					masks_ref_.at(match.template_id), threshold);
-			std::cout << "Filter Good_to_fit is: " << good_to_fit << "\n";
-
-			if ((good_to_fit < threshold_ratio) || ((rect.width * rect.height) < biggest_size))
-				continue;
-
-			if (good_to_fit < threshold_ratio)
-				continue;
-			if (!cv::checkRange(R))
-				continue;
-			if (!cv::checkRange(T))
-				continue;
-			best_to_fit = good_to_fit;
-			biggest_size = (rect.width * rect.height);
-			filteredMatches[0] = match;
-			/*
-
-			pose_result.set_R(cv::Mat(R));      //to fix rotation, how?
-			pose_result.set_T(cv::Mat(T));
-			pose_result.set_object_id(db_, match.class_id);
-
-			 if (current_blob > bigest_blob) {
-			 bigest_blob = current_blob;
-			 maxSimi = j;
-			 filteredMatches[0] = match;
-			 }
-			 */
-			break;
-		}
-		//filteredMatches.push_back(matches.at(maxSimi));
-		//to switch between Y and Z
+		//Matx to switch between Y and Z
 		cv::Mat R_ros =
 				(cv::Mat_<float>(3, 3) << -1, 0, 0, 0, 0, -1, 0, 1, 0);
-
-		BOOST_FOREACH(const cv::linemod::Match & match, filteredMatches) {
+		int count = 0;
+		BOOST_FOREACH(const cv::linemod::Match & match, matches) {
 			const std::vector<cv::linemod::Template>& templates =
 					detector_->getTemplates(match.class_id, match.template_id);
 			if (*visualize_)
 				drawResponse(templates, num_modalities, display,
 						cv::Point(match.x, match.y), detector_->getT(0));
-
+			count++;
+			if (count > 5)
+				break;
 			// Fill the Pose object
-			PoseResult pose_result, pose_init, pose_icp;
+			PoseResult pose_result;
 
 			cv::Mat mat = cv::Mat::eye(3, 3, CV_32F);
 			float* data = reinterpret_cast<float*>(mat.data);//cast mat.data to float*
@@ -705,24 +630,14 @@ struct Detector: public object_recognition_core::db::bases::ModelReaderBase {
 				T_in.convertTo(T, CV_32F);
 			}
 			//R = R.t();
-			pose_init.set_R(cv::Mat(cv::Matx33f(R_ros) * R));
 			//cv::Mat R_cam =
 			//				(cv::Mat_<float>(3, 3) << R(1,0), R(1,1), R(1,2), R(2,0), R(2,1), R(2,2), R(0,0), R(0,1), R(0,2));
-			//pose_init.set_R(cv::Mat(R_ros *R));
-
-			pose_init.set_object_id(db_, match.class_id);
-			pose_init.set_confidence(1);
-			//std::cout<<"Translation before: "<<T<<std::endl;
-			//std::cout << "Input rotation: " << R << std::endl;
 
 			//======================================
 			//Move the pose_result to the match position
 			cv::linemod::Feature f = templates[1].features[0];
 
 			//Get the good position by filtering the cloud in the zone of the returned match
-			//cv::Point tpl_pos (-1,-1);
-			//getFurthestPosition(templates, m_3DImg, cv::Point(match.x, match.y), tpl_pos);
-			//T = m_3DImg(tpl_pos.y, tpl_pos.x);
 			cv::Rect_<int> rect(0, 0, -1, -1);
 			getBoundingbox(templates, m_3DImg, cv::Point(match.x, match.y),
 					rect);
@@ -738,42 +653,27 @@ struct Detector: public object_recognition_core::db::bases::ModelReaderBase {
 
 			T = T0 + crop_out(rect.height / 1.5, rect.width / 1.5);
 
-			//std::cout << T << std::endl;
-
-			//showDiffImage(depth_out, crop_out);
-			R = R1;
-			icpCloudToCloud(crop_out, depth_real, R, T);
-			cv::Vec3f T_icp(T(0)+0.2, T(1), T(2));
-			cv::Vec3f T_init(T(0)+0.1, T(1), T(2));
-
-			pose_icp.set_T(cv::Mat(T_icp));
-			pose_init.set_T(cv::Mat(T_init));
-			pose_icp.set_object_id(db_, match.class_id);
-			pose_icp.set_confidence(0);
-
-
-			//R1 = cv::Matx33f(R_ros) * R1;
-			R = cv::Matx33f(R_ros) * R;
-			pose_icp.set_R(cv::Mat(R));
+			//R = R1;
+			icpCloudToCloud(crop_out, depth_real, R0, T);
 
 			float threshold = 0.02;
 			float good_to_fit = getExpectedInliersRatio(crop_out, depth_real,
 					masks_ref_.at(match.template_id), threshold);
-			std::cout << "Good to fit is: " << good_to_fit << "\n\n";
-			/*
+
+
 			if (good_to_fit < 0.7)
 				continue;
-	*/
+			std::cout << "Good to fit is: " << good_to_fit << "\n\n";
 			//T = m_3DImg(rect.y + (rect.height / 2), rect.x + (rect.width / 2));
 			//T(2) = T(2) + 0.03;	//to adjust the pose_result position to the center of the cloud, not on the cloud
 
 			//======================================
-			if (!cv::checkRange(R))
+			if (!cv::checkRange(R0))
 				continue;
 			if (!cv::checkRange(T))
 				continue;
 
-			pose_result.set_R(cv::Mat(R1));      //to fix rotation, how?
+			pose_result.set_R(cv::Mat(R0*R));      //to fix rotation, how?
 			pose_result.set_T(cv::Mat(T));
 			pose_result.set_object_id(db_, match.class_id);
 			//std::cout << "Translation: " << T << std::endl;
@@ -803,10 +703,6 @@ struct Detector: public object_recognition_core::db::bases::ModelReaderBase {
 			pose_result.set_confidence(match.similarity);
 			//=====================================================
 			pose_results_->push_back(pose_result);
-			//pose_results_->push_back(pose_init);
-			//pose_results_->push_back(pose_icp);
-			//renderViewFromAffine(ri_map_, match.class_id, T, R);
-
 			//break;
 
 		};
