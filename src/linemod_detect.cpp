@@ -606,7 +606,7 @@ int process(const tendrils& inputs, const tendrils& outputs) {
 
 	//Matx to switch between Y and Z
 	cv::Mat R_yz =
-	(cv::Mat_<float>(3, 3) << -1, 0, 0, 0, 0, -1, 0, 1, 0);
+	(cv::Mat_<float>(3, 3) << 1, 0, 0, 0, 0, -1, 0, 1, 0);
 
 	int count = 0;
 
@@ -618,7 +618,7 @@ int process(const tendrils& inputs, const tendrils& outputs) {
 		drawResponse(templates, num_modalities, display,
 				cv::Point(match.x, match.y), detector_->getT(0));
 
-		if (count > 10)
+		if (count > 3)
 		break;
 		count++;
 		cv::Mat mat = cv::Mat::eye(3, 3, CV_32F);
@@ -686,7 +686,7 @@ int process(const tendrils& inputs, const tendrils& outputs) {
 
 		// Fill the Pose object
 		PoseResult pose_result;
-		pose_result.set_R(cv::Mat(R0.t()*R));//*cv::Matx33f(R_yz)));      //to fix rotation, how?
+		pose_result.set_R(cv::Mat(R*cv::Matx33f(R_yz)));      //to fix rotation, how?
 
 		pose_result.set_T(cv::Mat(T));//cv::Vec3f(T(1)+0.01*(count-1), T(2),T(3))));
 		pose_result.set_object_id(db_, match.class_id);
