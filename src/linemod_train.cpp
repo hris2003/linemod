@@ -157,13 +157,14 @@ namespace ecto_linemod
         sources[0] = image;
         sources[1] = depth;
 
-/*      // Display the rendered image
+      // Display the rendered image
       cv::namedWindow("Rendering");
       if (!image.empty()) {
         cv::imshow("Rendering", image);
+        //std::cout<<"R:\n"<<R<<"\nT:\n"<<T<<std::endl;
         cv::waitKey(1);
       }
-*/
+
         detector_->addTemplate(sources, "object1", mask);
 
         // Also store the pose of each template

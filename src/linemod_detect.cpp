@@ -95,24 +95,43 @@ void drawResponse(const std::vector<cv::linemod::Template>& templates,
 }
 
 //========================================================================
-void getFurthestPosition(const std::vector<cv::linemod::Template>& templates,
-		cv::Mat_<cv::Vec3f>& cloudImage, cv::Point offset, cv::Point& pt) {
+/**
+ * Can we just base on the templates to get the right position of the origin point
+ */
+void get3DOriginPoint(cv::Mat_<cv::Vec3f>& cloudImage, cv::Vec3f& pt) {
 
-	cv::linemod::Feature f = templates[1].features[0];
-	int x = -1, y = -1;
-	float d = 1000000; //cloudImage( f.y + offset.y, f.x + offset.x)[2];
+	//cv::linemod::Feature f = templates[1].features[0];
+	//int x = -1, y = -1;
+	float d = 1e+5, min_x = 1e+5, max_y = -1e+5; //cloudImage( f.y + offset.y, f.x + offset.x)[2];
+	//cv::Vec3f d_origin(d,d,d);
+	//we need the min_x, max_y and d_min
 
-	for (int i = 0; i < (int) templates[1].features.size(); ++i) {
-		f = templates[0].features[i];
-		if (isnan(cloudImage(f.y + offset.y, f.x + offset.x)[2]))
-			continue;
-		if (d > cloudImage(f.y + offset.y, f.x + offset.x)[2]) {
-			d = cloudImage(f.y + offset.y, f.x + offset.x)[2];
-			x = f.x + offset.x, y = f.y + offset.y;
+	for (int x = 0; x < cloudImage.rows; x++)
+		for (int y = 0; y < cloudImage.cols; y++) {
+			//f = templates[0].features[i];
+			if (!isnan(cloudImage(x, y)[0]))//is it faster this way? Not sure
+
+				if (min_x > cloudImage(x, y)[0]) {
+					min_x = cloudImage(x, y)[0];
+					//x = f.x + offset.x, y = f.y + offset.y;
+				}
+
+			if (!isnan(cloudImage(x, y)[1]))
+
+				if (max_y < cloudImage(x, y)[1]) {
+					max_y = cloudImage(x, y)[1];
+					//x = f.x + offset.x, y = f.y + offset.y;
+				}
+			if (!isnan(cloudImage(x, y)[2]))
+
+				if (d > cloudImage(x, y)[2]) {
+					d = cloudImage(x, y)[2];
+					//x = f.x + offset.x, y = f.y + offset.y;
+				}
 		}
-	}
-	pt.x = x;
-	pt.y = y;
+	pt(0) = min_x;
+	pt(1) = max_y;
+	pt(2) = d;
 }
 
 void getBoundingbox(const std::vector<cv::linemod::Template>& templates,
@@ -206,22 +225,22 @@ void setupRenderer(std::string object_id,
 	object_recognition_core::db::Document document = documents[0];
 	std::vector<std::string> attachments_names = document.attachment_names();
 	std::string mesh_path;
-	BOOST_FOREACH(const std::string& attachment_name, attachments_names) {
-		if (attachment_name.find("original") != 0)
-			continue;
-		// Create a temporary file
-		char mesh_path_tmp[L_tmpnam];
-		mkstemp(mesh_path_tmp);
-		mesh_path = std::string(mesh_path_tmp) + attachment_name.substr(8);
+	BOOST_FOREACH(const std::string& attachment_name, attachments_names){
+	if (attachment_name.find("original") != 0)
+	continue;
+	// Create a temporary file
+	char mesh_path_tmp[L_tmpnam];
+	mkstemp(mesh_path_tmp);
+	mesh_path = std::string(mesh_path_tmp) + attachment_name.substr(8);
 
-		// Load the mesh and save it to the temporary file
-		std::ofstream mesh_file;
-		mesh_file.open(mesh_path.c_str());
-		document.get_attachment_stream(attachment_name, mesh_file);
-		mesh_file.close();
-	}
+	// Load the mesh and save it to the temporary file
+	std::ofstream mesh_file;
+	mesh_file.open(mesh_path.c_str());
+	document.get_attachment_stream(attachment_name, mesh_file);
+	mesh_file.close();
+}
 
-	// Define the display
+// Define the display
 	size_t width = 640, height = 480;
 	double near = 0.1, far = 1000;
 	double focal_length_x = 525, focal_length_y = 525;
@@ -398,8 +417,7 @@ void icpCloudToCloud(cv::Mat_<cv::Vec3f> src, cv::Mat_<cv::Vec3f> dest,
 	std::vector<cv::Vec3f> s_neighbors, d_neighbors;
 	cv::Mat_<cv::Vec3f> src_in(src);
 	//transformPoints(src, src, R, cv::Vec3f(0,0,0));
-	cv::Mat R0 =
-					(cv::Mat_<float>(3, 3) << 1, 0, 0, 0, 1, 0, 0, 0, 1);
+	cv::Mat R0 = (cv::Mat_<float>(3, 3) << 1, 0, 0, 0, 1, 0, 0, 0, 1);
 	double min_dist = getDistance2Clouds(src_in, dest);
 	/*
 	 std::cout << "begin distance: " << min_dist << "\n"
@@ -462,35 +480,23 @@ void icpCloudToCloud(cv::Mat_<cv::Vec3f> src, cv::Mat_<cv::Vec3f> dest,
 		if (distance < min_dist) {	  //and update min_dist
 			transformPoints(src_in, src_in, r, t);
 			min_dist = getDistance2Clouds(src_in, dest);
-			/*
-			 std::cout << "update distance: " << min_dist << "\n"
-			 << src(src.rows / 2, src.cols / 2) << "\n"
-			 << dest(dest.rows / 2, dest.cols / 2) << "\n";
-			 */
-
 			R = R * r;
 			T = r * T;
 			cv::add(T, t, T);
-			/*
-			 std::cout << "Little translation: " << t << std::endl;
-			 std::cout << "Update translation: " << T << std::endl;
-			 */
 
 		}
 	}
 	s_neighbors.clear();
 	d_neighbors.clear();
 
+	min_dist = getDistance2Clouds(src_in, dest);
 
-	 min_dist = getDistance2Clouds(src_in, dest);
-
-	 std::cout << "End distance: " << min_dist << "\n"
-	 << src_in(src_in.rows / 2, src_in.cols / 2) << "\n"
-	 << dest(dest.rows / 2, dest.cols / 2) << "\n";
+	//std::cout << "End distance: " << min_dist << "\n"
+	//<< src_in(src_in.rows / 2, src_in.cols / 2) << "\n"
+	//<< dest(dest.rows / 2, dest.cols / 2) << "\n";
 //	 std::cout << "Found rotation: " << R << std::endl;
 
 //	 std::cout << "Found translation: " << T << std::endl;
-
 
 }
 
@@ -505,262 +511,281 @@ struct Detector: public object_recognition_core::db::bases::ModelReaderBase {
 		 throw std::runtime_error("Unsupported method. Supported ones are: DefaultLINEMOD");*/
 
 		detector_ = cv::linemod::getDefaultLINEMOD();
-		BOOST_FOREACH(const object_recognition_core::db::Document & document, db_documents) {
-			std::string object_id = document.get_field<ObjectId>("object_id");
+		BOOST_FOREACH(const object_recognition_core::db::Document & document, db_documents){
+		std::string object_id = document.get_field<ObjectId>("object_id");
 
-			// Load the detector for that class
-			cv::linemod::Detector detector;
-			document.get_attachment<cv::linemod::Detector>("detector",
-					detector);
-			std::string object_id_in_db = detector.classIds()[0];
-			for (size_t template_id = 0; template_id < detector.numTemplates();
-					++template_id)
-				detector_->addSyntheticTemplate(
-						detector.getTemplates(object_id_in_db, template_id),
-						object_id);
+		// Load the detector for that class
+		cv::linemod::Detector detector;
+		document.get_attachment<cv::linemod::Detector>("detector",
+				detector);
+		std::string object_id_in_db = detector.classIds()[0];
+		for (size_t template_id = 0; template_id < detector.numTemplates();
+				++template_id)
+		detector_->addSyntheticTemplate(
+				detector.getTemplates(object_id_in_db, template_id),
+				object_id);
 
-			// Deal with the poses
-			document.get_attachment<std::vector<cv::Mat> >("Rs",
-					Rs_[object_id]);
-			document.get_attachment<std::vector<cv::Mat> >("Ts",
-					Ts_[object_id]);
+		// Deal with the poses
+		document.get_attachment<std::vector<cv::Mat> >("Rs",
+				Rs_[object_id]);
+		document.get_attachment<std::vector<cv::Mat> >("Ts",
+				Ts_[object_id]);
 
-			std::cout << "Loaded " << object_id << std::endl;
+		std::cout << "Loaded " << object_id << std::endl;
 
-			setupRenderer(object_id, ri_map_, images_ref_, masks_ref_);
+		setupRenderer(object_id, ri_map_, images_ref_, masks_ref_);
+	}
+}
+
+static void declare_params(tendrils& params) {
+	object_recognition_core::db::bases::declare_params_impl(params,
+			"LINEMOD");
+	params.declare(&Detector::threshold_, "threshold",
+			"Matching threshold, as a percentage", 93.0f);
+	params.declare(&Detector::visualize_, "visualize",
+			"If True, visualize the output.", false);
+
+}
+
+static void declare_io(const tendrils& params, tendrils& inputs,
+		tendrils& outputs) {
+	inputs.declare(&Detector::color_, "image", "An rgb full frame image.");
+	inputs.declare(&Detector::depth_, "depth", "The 16bit depth image.");
+	inputs.declare(&Detector::K_image_, "K_image", "The calibration matrix").required();
+	inputs.declare(&Detector::K_depth_, "K_depth", "The calibration matrix").required();
+
+	outputs.declare(&Detector::pose_results_, "pose_results",
+			"The results of object recognition");
+}
+
+void configure(const tendrils& params, const tendrils& inputs,
+		const tendrils& outputs) {
+	configure_impl();
+}
+
+int process(const tendrils& inputs, const tendrils& outputs) {
+	// Resize color to 640x480
+	/// @todo Move resizing to separate cell, and try LINE-MOD w/ SXGA images
+
+	cv::Mat color;
+	if (color_->rows > 960)
+	cv::pyrDown(color_->rowRange(0, 960), color);
+	else
+	color_->copyTo(color);
+
+	pose_results_->clear();
+
+	if (detector_->classIds().empty())
+	return ecto::OK;
+
+	std::vector<cv::Mat> sources;
+	sources.push_back(color);
+	sources.push_back(*depth_);
+
+	std::vector<cv::linemod::Match> matches, filteredMatches;
+	detector_->match(sources, *threshold_, matches);
+	cv::Mat display = color;
+	int num_modalities = (int) detector_->getModalities().size();
+
+	//eliminate duplicated positions
+	std::vector<cv::Point> posPoint;
+	std::vector<int> maxSize;
+	//filteredMatches->clear();
+	if (matches.size() > 0) {
+		filteredMatches.push_back(matches.at(0));
+	}
+	//========================================================
+	//ICP for depth info
+	cv::Mat_<cv::Vec3f> m_3DImg;
+	cv::Mat_<float> K;
+	K_depth_->convertTo(K, CV_32F);
+	//cv::checkRange(*depth_);
+	cv::depthTo3d(*depth_, K, m_3DImg);
+	//==============================================================
+	//get the finest icp-ed matches only
+
+	//Matx to switch between Y and Z
+	cv::Mat R_yz =
+	(cv::Mat_<float>(3, 3) << -1, 0, 0, 0, 0, -1, 0, 1, 0);
+
+	int count = 0;
+
+	double gtf = 0;
+	BOOST_FOREACH(const cv::linemod::Match & match, matches) {
+		const std::vector<cv::linemod::Template>& templates =
+		detector_->getTemplates(match.class_id, match.template_id);
+		if (*visualize_)
+		drawResponse(templates, num_modalities, display,
+				cv::Point(match.x, match.y), detector_->getT(0));
+
+		if (count > 10)
+		break;
+		count++;
+		cv::Mat mat = cv::Mat::eye(3, 3, CV_32F);
+		float* data = reinterpret_cast<float*>(mat.data);//cast mat.data to float*
+
+		cv::Matx33f R(data), R1(data), R0(data);
+		cv::Vec3f T(0, 0, 0), T0(0, 0, 0), T1(0,0,0);
+
+		{
+			cv::Mat R_in =
+			Rs_.at(match.class_id)[match.template_id].clone();
+			cv::Mat T_in =
+			Ts_.at(match.class_id)[match.template_id].clone();
+			R_in.convertTo(R, CV_32F);
+			R_in.convertTo(R1, CV_32F);
+			T_in.convertTo(T, CV_32F);
+			T_in.convertTo(T1, CV_32F);
 		}
+
+		//======================================
+		//Move the pose_result to the match position
+		cv::linemod::Feature f = templates[1].features[0];
+
+		//Get the good position by filtering the cloud in the zone of the returned match
+		cv::Rect_<int> rect(0, 0, -1, -1);
+		cv::Point d_point(0,0);//to save the location of the depth value of the origin point on the acquired image
+
+		getBoundingbox(templates, m_3DImg, cv::Point(match.x, match.y),
+				rect);
+		cv::Vec3f T_origin(0,0,0);
+
+		image_ref_ = images_ref_.at(match.template_id);
+
+		rect.width = image_ref_.cols;
+		rect.height = image_ref_.rows;
+
+		depth_real = m_3DImg(rect);
+
+		cv::Mat_<cv::Vec3f> crop_out;
+		cv::depthTo3d(image_ref_, K, crop_out);
+		//get3DOriginPoint(crop_out, T_origin);//does not get us anywhere :-(
+
+		T = T0 + crop_out(rect.height / 2, rect.width / 2);
+		//R = R1;
+		icpCloudToCloud(crop_out, depth_real, R0, T);
+
+		float threshold = 0.02;
+		float good_to_fit = getExpectedInliersRatio(crop_out, depth_real,
+				masks_ref_.at(match.template_id), threshold);
+
+		if (good_to_fit < 0.75)
+			continue;
+
+		gtf = good_to_fit;
+		//std::cout << "Good to fit is: " << good_to_fit << "\n\n";
+		//T = m_3DImg(rect.y + (rect.height / 2), rect.x + (rect.width / 2));
+		//T(2) = T(2) + 0.03;	//to adjust the pose_result position to the center of the cloud, not on the cloud
+
+		//======================================
+
+		if (!cv::checkRange(R0))
+		continue;
+		if (!cv::checkRange(T))
+		continue;
+
+		// Fill the Pose object
+		PoseResult pose_result;
+		pose_result.set_R(cv::Mat(R0.t()*R));//*cv::Matx33f(R_yz)));      //to fix rotation, how?
+
+		pose_result.set_T(cv::Mat(T));//cv::Vec3f(T(1)+0.01*(count-1), T(2),T(3))));
+		pose_result.set_object_id(db_, match.class_id);
+
+		/*
+		 if (cv::norm(T1 - cv::Vec3f(-0.09222, 0.794667, 0)) > 0.01){
+		 continue;
+		 }
+		 std::cout << "T_in:\n" << T1 << std::endl;
+		 std::cout << "T_out:\n" << T << std::endl;
+		 std::cout << "R_in:\n" << R1 << std::endl;
+		 */
+		//=====================================================
+		// Add the point cloud to the pose_result
+		// Add the cluster of points
+		/*
+		 std::vector<sensor_msgs::PointCloud2Ptr> ros_clouds (1);
+		 ros_clouds[0].reset(new sensor_msgs::PointCloud2());
+		 sensor_msgs::PointCloud2Proxy<sensor_msgs::PointXYZ> proxy(*(ros_clouds[0]));
+		 // Add the cloud
+		 proxy.resize(templates[1].features.size());
+		 sensor_msgs::PointXYZ *iter = &(proxy[0]);
+
+		 for (int i = 0; i < (int) templates[1].features.size(); ++i, ++iter)
+		 {
+		 f = templates[1].features[i];
+		 cv::Vec3f res = m_3DImg( f.y + match.y, f.x + match.x);
+		 iter->x = res[0];
+		 iter->y = res[1];
+		 iter->z = res[2];
+
+		 }
+		 pose_result.set_clouds(ros_clouds);
+
+		 */
+		pose_result.set_confidence(match.similarity);
+		pose_results_->push_back(pose_result);
+		//=====================================================
+
+		//break;
+
+	};
+
+	if (*visualize_) {
+		cv::namedWindow("LINEMOD");
+		cv::imshow("LINEMOD", display);
+		// Display the rendered image
+		/*
+		 cv::namedWindow("Rendering");
+		 cv::namedWindow("Depth_in");
+		 if (!image_ref_.empty()) {
+		 cv::imshow("Rendering", image_ref_);
+		 cv::imshow("Depth_in", depth_real);
+		 }
+		 */
+		cv::waitKey(1);
 	}
+	return ecto::OK;
+}
 
-	static void declare_params(tendrils& params) {
-		object_recognition_core::db::bases::declare_params_impl(params,
-				"LINEMOD");
-		params.declare(&Detector::threshold_, "threshold",
-				"Matching threshold, as a percentage", 93.0f);
-		params.declare(&Detector::visualize_, "visualize",
-				"If True, visualize the output.", false);
-
-	}
-
-	static void declare_io(const tendrils& params, tendrils& inputs,
-			tendrils& outputs) {
-		inputs.declare(&Detector::color_, "image", "An rgb full frame image.");
-		inputs.declare(&Detector::depth_, "depth", "The 16bit depth image.");
-		inputs.declare(&Detector::K_image_, "K_image", "The calibration matrix").required();
-		inputs.declare(&Detector::K_depth_, "K_depth", "The calibration matrix").required();
-
-		outputs.declare(&Detector::pose_results_, "pose_results",
-				"The results of object recognition");
-	}
-
-	void configure(const tendrils& params, const tendrils& inputs,
-			const tendrils& outputs) {
-		configure_impl();
-	}
-
-	int process(const tendrils& inputs, const tendrils& outputs) {
-		// Resize color to 640x480
-		/// @todo Move resizing to separate cell, and try LINE-MOD w/ SXGA images
-
-		cv::Mat color;
-		if (color_->rows > 960)
-			cv::pyrDown(color_->rowRange(0, 960), color);
-		else
-			color_->copyTo(color);
-
-		pose_results_->clear();
-
-		if (detector_->classIds().empty())
-			return ecto::OK;
-
-		std::vector<cv::Mat> sources;
-		sources.push_back(color);
-		sources.push_back(*depth_);
-
-		std::vector<cv::linemod::Match> matches, filteredMatches;
-		detector_->match(sources, *threshold_, matches);
-		cv::Mat display = color;
-		int num_modalities = (int) detector_->getModalities().size();
-
-		//eliminate duplicated positions
-		std::vector<cv::Point> posPoint;
-		std::vector<int> maxSize;
-		//filteredMatches->clear();
-		if (matches.size() > 0) {
-			filteredMatches.push_back(matches.at(0));
-		}
-		//========================================================
-		//ICP for depth info
-		cv::Mat_<cv::Vec3f> m_3DImg;
-		cv::Mat_<float> K;
-		K_depth_->convertTo(K, CV_32F);
-		//cv::checkRange(*depth_);
-		cv::depthTo3d(*depth_, K, m_3DImg);
-		//==============================================================
-		//get the finest icp-ed matches only
-
-		//Matx to switch between Y and Z
-		cv::Mat R_ros =
-				(cv::Mat_<float>(3, 3) << -1, 0, 0, 0, 0, -1, 0, 1, 0);
-		int count = 0;
-		BOOST_FOREACH(const cv::linemod::Match & match, matches) {
-			const std::vector<cv::linemod::Template>& templates =
-					detector_->getTemplates(match.class_id, match.template_id);
-			if (*visualize_)
-				drawResponse(templates, num_modalities, display,
-						cv::Point(match.x, match.y), detector_->getT(0));
-			count++;
-			if (count > 5)
-				break;
-			// Fill the Pose object
-			PoseResult pose_result;
-
-			cv::Mat mat = cv::Mat::eye(3, 3, CV_32F);
-			float* data = reinterpret_cast<float*>(mat.data);//cast mat.data to float*
-
-			cv::Matx33f R(data), R1(data), R0(data);
-			cv::Vec3f T(0, 0, 0), T0(0, 0, 0);
-
-			{
-				cv::Mat R_in =
-						Rs_.at(match.class_id)[match.template_id].clone();
-				cv::Mat T_in =
-						Ts_.at(match.class_id)[match.template_id].clone();
-				R_in.convertTo(R, CV_32F);
-				R_in.convertTo(R1, CV_32F);
-				T_in.convertTo(T, CV_32F);
-			}
-			//R = R.t();
-			//cv::Mat R_cam =
-			//				(cv::Mat_<float>(3, 3) << R(1,0), R(1,1), R(1,2), R(2,0), R(2,1), R(2,2), R(0,0), R(0,1), R(0,2));
-
-			//======================================
-			//Move the pose_result to the match position
-			cv::linemod::Feature f = templates[1].features[0];
-
-			//Get the good position by filtering the cloud in the zone of the returned match
-			cv::Rect_<int> rect(0, 0, -1, -1);
-			getBoundingbox(templates, m_3DImg, cv::Point(match.x, match.y),
-					rect);
-			image_ref_ = images_ref_.at(match.template_id);
-
-			rect.width = image_ref_.cols;
-			rect.height = image_ref_.rows;
-
-			depth_real = m_3DImg(rect);
-
-			cv::Mat_<cv::Vec3f> crop_out;
-			cv::depthTo3d(image_ref_, K, crop_out);
-
-			T = T0 + crop_out(rect.height / 1.5, rect.width / 1.5);
-
-			//R = R1;
-			icpCloudToCloud(crop_out, depth_real, R0, T);
-
-			float threshold = 0.02;
-			float good_to_fit = getExpectedInliersRatio(crop_out, depth_real,
-					masks_ref_.at(match.template_id), threshold);
-
-
-			if (good_to_fit < 0.7)
-				continue;
-			std::cout << "Good to fit is: " << good_to_fit << "\n\n";
-			//T = m_3DImg(rect.y + (rect.height / 2), rect.x + (rect.width / 2));
-			//T(2) = T(2) + 0.03;	//to adjust the pose_result position to the center of the cloud, not on the cloud
-
-			//======================================
-			if (!cv::checkRange(R0))
-				continue;
-			if (!cv::checkRange(T))
-				continue;
-
-			pose_result.set_R(cv::Mat(R0*R));      //to fix rotation, how?
-			pose_result.set_T(cv::Mat(T));
-			pose_result.set_object_id(db_, match.class_id);
-			//std::cout << "Translation: " << T << std::endl;
-			//=====================================================
-			// Add the point cloud to the pose_result
-			// Add the cluster of points
-			/*
-			 std::vector<sensor_msgs::PointCloud2Ptr> ros_clouds (1);
-			 ros_clouds[0].reset(new sensor_msgs::PointCloud2());
-			 sensor_msgs::PointCloud2Proxy<sensor_msgs::PointXYZ> proxy(*(ros_clouds[0]));
-			 // Add the cloud
-			 proxy.resize(templates[1].features.size());
-			 sensor_msgs::PointXYZ *iter = &(proxy[0]);
-
-			 for (int i = 0; i < (int) templates[1].features.size(); ++i, ++iter)
-			 {
-			 f = templates[1].features[i];
-			 cv::Vec3f res = m_3DImg( f.y + match.y, f.x + match.x);
-			 iter->x = res[0];
-			 iter->y = res[1];
-			 iter->z = res[2];
-
-			 }
-			 pose_result.set_clouds(ros_clouds);
-
-			 */
-			pose_result.set_confidence(match.similarity);
-			//=====================================================
-			pose_results_->push_back(pose_result);
-			//break;
-
-		};
-		if (*visualize_) {
-			cv::namedWindow("LINEMOD");
-			cv::imshow("LINEMOD", display);
-			// Display the rendered image
-			/*
-			 cv::namedWindow("Rendering");
-			 cv::namedWindow("Depth_in");
-			 if (!image_ref_.empty()) {
-			 cv::imshow("Rendering", image_ref_);
-			 cv::imshow("Depth_in", depth_real);
-			 }
-			 */
-			cv::waitKey(1);
-		}
-		return ecto::OK;
-	}
-
-	/** LINE-MOD detector */
-	cv::Ptr<cv::linemod::Detector> detector_;
-	// Parameters
-	spore<float> threshold_;
-	// Inputs
-	spore<cv::Mat> color_, depth_;
-	// Calibration matrix of the camera
-	spore<cv::Mat> K_image_, K_depth_;
-	/** The DB parameters as a JSON string */
-	ecto::spore<std::string> json_db_;
-	cv::Mat image_ref_, mask_out;
-	cv::Mat_<cv::Vec3f> depth_real;
-	// A dictionary of RendererIterator for object_ids
-	std::map<std::string, RendererGlut> ri_map_;
-	std::vector<cv::Mat> images_ref_;
-	std::vector<cv::Mat> masks_ref_;
-	std::vector<cv::Mat> Rs_ref_;
-	std::vector<cv::Mat> Ts_ref_;
-	/*
-	 #if USE_GLUT
-	 //RendererGlut renderer = RendererGlut(mesh_path);
-	 std::map<std::string, RendererGlut> ri_map_;
-	 #else
-	 //RendererOSMesa renderer = RendererOSMesa(mesh_path);
-	 std::map<std::string, RendererOSMesa> ri_map_;
-	 #endif
-	 */
-	/** True or False to output debug image */
-	ecto::spore<bool> visualize_;
-	/** The object recognition results */
-	ecto::spore<std::vector<PoseResult> > pose_results_;
-	/** The rotations, per object and per template */
-	std::map<std::string, std::vector<cv::Mat> > Rs_;
-	/** The translations, per object and per template */
-	std::map<std::string, std::vector<cv::Mat> > Ts_;
+/** LINE-MOD detector */
+cv::Ptr<cv::linemod::Detector> detector_;
+// Parameters
+spore<float> threshold_;
+// Inputs
+spore<cv::Mat> color_, depth_;
+// Calibration matrix of the camera
+spore<cv::Mat> K_image_, K_depth_;
+/** The DB parameters as a JSON string */
+ecto::spore<std::string> json_db_;
+cv::Mat image_ref_, mask_out;
+cv::Mat_<cv::Vec3f> depth_real;
+// A dictionary of RendererIterator for object_ids
+std::map<std::string, RendererGlut> ri_map_;
+std::vector<cv::Mat> images_ref_;
+std::vector<cv::Mat> masks_ref_;
+std::vector<cv::Mat> Rs_ref_;
+std::vector<cv::Mat> Ts_ref_;
+/*
+ #if USE_GLUT
+ //RendererGlut renderer = RendererGlut(mesh_path);
+ std::map<std::string, RendererGlut> ri_map_;
+ #else
+ //RendererOSMesa renderer = RendererOSMesa(mesh_path);
+ std::map<std::string, RendererOSMesa> ri_map_;
+ #endif
+ */
+/** True or False to output debug image */
+ecto::spore<bool> visualize_;
+/** The object recognition results */
+ecto::spore<std::vector<PoseResult> > pose_results_;
+/** The rotations, per object and per template */
+std::map<std::string, std::vector<cv::Mat> > Rs_;
+/** The translations, per object and per template */
+std::map<std::string, std::vector<cv::Mat> > Ts_;
 };
 
-} // namespace ecto_linemod
+}
+		// namespace ecto_linemod
 
 ECTO_CELL(ecto_linemod, ecto_linemod::Detector, "Detector",
-		"Use LINE-MOD for object detection.")
+"Use LINE-MOD for object detection.")
