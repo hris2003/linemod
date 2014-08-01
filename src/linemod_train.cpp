@@ -134,7 +134,7 @@ namespace ecto_linemod
         far);
     std::remove(mesh_path.c_str());
 
-      RendererIterator renderer_iterator = RendererIterator(&renderer, 150);
+      RendererIterator renderer_iterator = RendererIterator(&renderer, 50);
 
       cv::Mat image, depth, mask;
       cv::Mat_<unsigned short> depth_short;

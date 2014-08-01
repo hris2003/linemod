@@ -255,7 +255,7 @@ void setupRenderer(std::string object_id,
 			far);
 	std::remove(mesh_path.c_str());
 
-	RendererIterator renderer_iterator = RendererIterator(&renderer, 150);
+	RendererIterator renderer_iterator = RendererIterator(&renderer, 50);
 
 	cv::Mat image, depth, mask;
 	cv::Mat_<unsigned short> depth_short;
@@ -618,7 +618,7 @@ int process(const tendrils& inputs, const tendrils& outputs) {
 		drawResponse(templates, num_modalities, display,
 				cv::Point(match.x, match.y), detector_->getT(0));
 
-		if (count > 3)
+		if (count > 1)
 		break;
 		count++;
 		cv::Mat mat = cv::Mat::eye(3, 3, CV_32F);
@@ -637,6 +637,7 @@ int process(const tendrils& inputs, const tendrils& outputs) {
 			T_in.convertTo(T, CV_32F);
 			T_in.convertTo(T1, CV_32F);
 		}
+		//R = R.t();//*cv::Matx33f(R_yz);
 
 		//======================================
 		//Move the pose_result to the match position
@@ -662,17 +663,19 @@ int process(const tendrils& inputs, const tendrils& outputs) {
 		//get3DOriginPoint(crop_out, T_origin);//does not get us anywhere :-(
 
 		T = T0 + crop_out(rect.height / 2, rect.width / 2);
-		//R = R1;
+		//R = cv::Matx33f(R*cv::Matx33f(R_yz));
 		icpCloudToCloud(crop_out, depth_real, R0, T);
 
-		float threshold = 0.02;
+		/*
+		float threshold = 0.01;
 		float good_to_fit = getExpectedInliersRatio(crop_out, depth_real,
 				masks_ref_.at(match.template_id), threshold);
 
-		if (good_to_fit < 0.75)
+		if (good_to_fit < 0.3)
 			continue;
 
 		gtf = good_to_fit;
+		*/
 		//std::cout << "Good to fit is: " << good_to_fit << "\n\n";
 		//T = m_3DImg(rect.y + (rect.height / 2), rect.x + (rect.width / 2));
 		//T(2) = T(2) + 0.03;	//to adjust the pose_result position to the center of the cloud, not on the cloud
@@ -684,13 +687,34 @@ int process(const tendrils& inputs, const tendrils& outputs) {
 		if (!cv::checkRange(T))
 		continue;
 
+		//check if R_icp is an almost identity matrix
+		/*
+		int c = 0;
+		for (int row = 0; row < 3; row++)
+			for (int col = 0; col < 3; col++)
+				c += (fabs(R0(row, col)) < 0.09) && (row != col);
+
+		// Display the rendered image
+		//cv::namedWindow("Rendering");
+
+		if (c < 5)
+			continue;
+		std::cout<<"c:\t"<<c<<std::endl;
+			*/
+		std::cout<<"R_icp: \n"<<R0<<std::endl;
+
 		// Fill the Pose object
 		PoseResult pose_result;
-		pose_result.set_R(cv::Mat(R*cv::Matx33f(R_yz)));      //to fix rotation, how?
+		pose_result.set_R(cv::Mat(R));      //to fix rotation, how?
 
 		pose_result.set_T(cv::Mat(T));//cv::Vec3f(T(1)+0.01*(count-1), T(2),T(3))));
 		pose_result.set_object_id(db_, match.class_id);
-
+		cv::namedWindow("Rendering");
+		//cv::namedWindow("Depth_in");
+		if (!image_ref_.empty()) {
+		 cv::imshow("Rendering", image_ref_);
+		 cv::waitKey(1);
+		}
 		/*
 		 if (cv::norm(T1 - cv::Vec3f(-0.09222, 0.794667, 0)) > 0.01){
 		 continue;
@@ -785,7 +809,7 @@ std::map<std::string, std::vector<cv::Mat> > Ts_;
 };
 
 }
-		// namespace ecto_linemod
+// namespace ecto_linemod
 
 ECTO_CELL(ecto_linemod, ecto_linemod::Detector, "Detector",
 "Use LINE-MOD for object detection.")
