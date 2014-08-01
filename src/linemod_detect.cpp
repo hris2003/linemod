@@ -193,7 +193,7 @@ void getPointsInRect(cv::Mat_<cv::Vec3f> src_cloud,
 //void getSourceFromTR(cv::Mat T_in, cv::Mat R_in, std::vector<cv::Mat>& rendered_images, std::string object_id){
 void setupRenderer(std::string object_id,
 		std::map<std::string, RendererGlut>& ri_map,
-		std::vector<cv::Mat>& imgs_ref, std::vector<cv::Mat>& mask_ref) {
+		std::vector<cv::Mat>& imgs_ref, std::vector<cv::Mat>& mask_ref,ecto::spore<std::vector<PoseResult> > pose_results_) {
 //Inspired from linemod_train.cpp
 
 // Steps are:
@@ -259,8 +259,9 @@ void setupRenderer(std::string object_id,
 
 	cv::Mat image, depth, mask;
 	cv::Mat_<unsigned short> depth_short;
-	cv::Matx33d R;
-	cv::Vec3d T;
+	cv::Matx33f R, R1;
+	cv::Vec3f T, T1(0,0,0);
+	pose_results_->clear();
 	for (size_t i = 0; !renderer_iterator.isDone(); ++i, ++renderer_iterator) {
 
 		std::stringstream status;
@@ -274,6 +275,28 @@ void setupRenderer(std::string object_id,
 
 		//depth.convertTo(depth_short, CV_16U, 1000);
 		depth.convertTo(depth, CV_32F, 0.001);  //convert to meter
+
+
+		//==========================================================
+		cv::Mat R_in = cv::Mat(R).clone();
+		cv::Mat T_in = cv::Mat(T).clone();
+		//convert the R and T before sending to pose_results_
+		R_in.convertTo(R1, CV_32F);
+		//T_in.convertTo(T1, CV_32F);
+		PoseResult pose_result;
+		pose_result.set_R(cv::Mat(R1));      //to fix rotation, how?
+
+		pose_result.set_T(cv::Mat(T1));//cv::Vec3f(T(1)+0.01*(count-1), T(2),T(3))));
+				//pose_result.set_object_id(db_, match.class_id);
+		pose_results_->push_back(pose_result);
+		cv::namedWindow("Rendering");
+		//cv::namedWindow("Depth_in");
+		if (!depth.empty()) {
+		 cv::imshow("Rendering", depth);
+		 cv::waitKey(1000);
+		}
+		//==========================================================
+
 		imgs_ref.push_back(depth);
 		mask_ref.push_back(mask);
 	}
@@ -533,7 +556,7 @@ struct Detector: public object_recognition_core::db::bases::ModelReaderBase {
 
 		std::cout << "Loaded " << object_id << std::endl;
 
-		setupRenderer(object_id, ri_map_, images_ref_, masks_ref_);
+		setupRenderer(object_id, ri_map_, images_ref_, masks_ref_, pose_results_);
 	}
 }
 
